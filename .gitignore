@@ -10,3 +10,8 @@ tmp/
 
 ## 本地基准结果
 BenchmarkDotNet.Artifacts/
+
+## NuGet 打包产物
+artifacts/
+*.nupkg
+*.snupkg

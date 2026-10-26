@@ -1,0 +1,125 @@
+name: Publish NuGet
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: "手动发布的包版本，例如 1.0.1；留空时使用 csproj 里的 VersionPrefix"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write   # Trusted Publishing（OIDC）必需
+
+concurrency:
+  group: publish-nuget-${{ github.ref }}-${{ inputs.package_version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Pack and publish
+    runs-on: windows-latest
+    environment: production
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Determine package version
+        id: version
+        shell: pwsh
+        run: |
+          # tag（v*）只作为触发条件，不决定版本号；版本号以 csproj 的 VersionPrefix 为准，
+          # 手动 dispatch 时填的 package_version 会覆盖它（发应急版本用）。
+          function Get-VersionPrefix([string]$projectPath) {
+              [xml]$project = Get-Content $projectPath
+              # 必须 Trim：XML 节点文本会带上标签两侧的缩进空白，
+              # 不 Trim 的话得到的是 " 1.0.0"，后面的正则校验会直接判为非法。
+              return ([string]$project.Project.PropertyGroup.VersionPrefix).Trim()
+          }
+
+          $override = "${{ inputs.package_version }}".Trim()
+          if ($override) {
+              $version = $override
+          }
+          else {
+              $version = Get-VersionPrefix "src/CsvLite/CsvLite.csproj"
+          }
+
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+              throw "无效的 NuGet 版本：$version"
+          }
+
+          "csvlite=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Output "CsvLite=$version"
+
+      # 本项目三个 TFM 都能被 dotnet CLI 构建，直接构建解决方案。
+      - name: Restore
+        shell: pwsh
+        run: |
+          dotnet restore CsvLite.sln
+          if ($LASTEXITCODE -ne 0) { throw "restore 失败" }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          dotnet build CsvLite.sln -c Release --no-restore -p:ContinuousIntegrationBuild=true
+          if ($LASTEXITCODE -ne 0) { throw "build 失败" }
+
+      # 注意：本测试项目自带运行器（不依赖 xunit/vstest），因此不能用 dotnet test。
+      # 它反射扫描 [Test] 方法并打印通过/失败汇总，失败时返回非零退出码。
+      - name: Test
+        shell: pwsh
+        run: |
+          dotnet run --project tests/CsvLite.Tests/CsvLite.Tests.csproj -c Release --no-build
+          if ($LASTEXITCODE -ne 0) { throw "测试失败（退出码 $LASTEXITCODE）" }
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          dotnet pack src/CsvLite/CsvLite.csproj -c Release --no-build --no-restore `
+            -o artifacts `
+            -p:PackageVersion=${{ steps.version.outputs.csvlite }} `
+            -p:ContinuousIntegrationBuild=true
+          if ($LASTEXITCODE -ne 0) { throw "pack 失败" }
+
+      - name: Upload NuGet packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: CsvLite-${{ steps.version.outputs.csvlite }}
+          path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+          if-no-files-found: error
+
+      - name: Login to NuGet.org with OIDC
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: UnknowName
+
+      - name: Push to NuGet.org
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          $version = "${{ steps.version.outputs.csvlite }}"
+          $package = "artifacts/CsvLite.$version.nupkg"
+
+          if (-not (Test-Path $package)) { throw "找不到包：$package" }
+
+          dotnet nuget push $package `
+            --source "https://api.nuget.org/v3/index.json" `
+            --api-key $env:NUGET_API_KEY `
+            --skip-duplicate
+          if ($LASTEXITCODE -ne 0) { throw "CsvLite $version 推送失败（退出码 $LASTEXITCODE）" }

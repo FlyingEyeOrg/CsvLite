@@ -7,11 +7,36 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
+
+  <!-- NuGet 打包元数据 -->
+  <PropertyGroup>
+    <PackageId>CsvLite</PackageId>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <Authors>FlyingEyeOrg</Authors>
+    <Title>CsvLite</Title>
+    <Description>轻量、高速、并发安全的 .NET CSV 写入库。无行集合/索引/列模型，打开 14 GB 文件与 14 KB 文件代价相同；追加以行对象进行，字段自动转义；每个生产者独享环形缓冲，热路径无锁无共享计数器；表头可编辑且不触碰数据行；支持 GBK 等 ANSI 编码，中文 Excel 直接打开不乱码。</Description>
+    <PackageTags>csv;writer;high-performance;concurrent;gbk;excel;netstandard</PackageTags>
+    <PackageProjectUrl>https://github.com/FlyingEyeOrg/CsvLite</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/FlyingEyeOrg/CsvLite.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+  </PropertyGroup>
+
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <PackageReference Include="System.Memory" Version="4.5.5" />
   </ItemGroup>
   <ItemGroup>
     <!-- GBK / Big5 / Shift-JIS 等 ANSI 代码页自 .NET Core 起不再内置，需显式引入。 -->
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 把仓库根目录的 README 与 LICENSE 打进包，NuGet 页面才能显示。 -->
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Link="README.md" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" Link="LICENSE" />
   </ItemGroup>
 </Project>
