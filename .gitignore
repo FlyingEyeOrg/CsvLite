@@ -1,0 +1,12 @@
+## 构建产物
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+## 测试与示例的临时文件（代码会写到这里，见 tmp/.gitignore）
+tmp/
+
+## 本地基准结果
+BenchmarkDotNet.Artifacts/
